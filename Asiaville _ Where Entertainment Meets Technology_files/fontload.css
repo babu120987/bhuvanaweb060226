@@ -1,0 +1,16 @@
+@font-face {
+  font-family: 'Montserrat';
+  src: url('../fonts/Montserrat-Regular.otf') format("opentype");
+  font-weight: 500;
+}
+
+@font-face {
+  font-family: 'Montserrat';
+  src: url('../fonts/Montserrat-Medium.otf') format("opentype");
+  font-weight: 400;
+}
+
+@font-face {
+  font-family: 'amithen';
+  src: url('../fonts/Amithen.ttf') format("truetype");
+}
