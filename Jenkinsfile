@@ -13,11 +13,16 @@ pipeline {
             }
         }
 
-        stage('Build Docker Image') {
-            steps {
-                sh 'docker build -t bhuvanaweb:latest .'
-            }
-        }
+stage('Build Docker Image') {
+  steps {
+    sh '''
+      export PATH=$PATH:/usr/bin:/snap/bin
+      which docker || true
+      docker --version
+      docker build -t bhuvanaweb:latest .
+    '''
+  }
+}
 
         stage('Test Container') {
             steps {
