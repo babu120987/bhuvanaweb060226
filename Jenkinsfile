@@ -1,5 +1,9 @@
 pipeline {
   agent { label 'wsl' }
+  ...
+}
+pipeline {
+  agent { label 'wsl' }
   triggers { githubPush() }
 
   stages {
