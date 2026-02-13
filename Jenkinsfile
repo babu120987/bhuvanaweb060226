@@ -5,6 +5,44 @@ pipeline {
         githubPush()
     }
 
+    stages {
+
+        stage('Diagnostics') {
+            steps {
+                sh '''
+                    echo "=== WHO/WHERE ==="
+                    whoami || true
+                    hostname || true
+                    uname -a || true
+
+                    echo "=== PATH ==="
+                    echo $PATH
+
+                    echo "=== DOCKER CHECK ==="
+                    command -v docker || true
+                    ls -l /usr/bin/docker /snap/bin/docker 2>/dev/null || true
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                    /usr/bin/docker --version
+                    /usr/bin/docker build -t bhuvanaweb:latest .
+                '''
+            }
+        }
+
+    }
+}
+pipeline {
+    agent any
+
+    triggers {
+        githubPush()
+    }
+
     environment {
         IMAGE_NAME = "bhuvanaweb"
         IMAGE_TAG  = "latest"
