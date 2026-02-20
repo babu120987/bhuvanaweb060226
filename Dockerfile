@@ -12,6 +12,6 @@ RUN rm -rf /usr/share/nginx/html/*
 # Copy website files (ONLY site files)
 COPY . /usr/share/nginx/html/
 
-EXPOSE 80
+EXPOSE 1000
 
 CMD ["nginx", "-g", "daemon off;"]
