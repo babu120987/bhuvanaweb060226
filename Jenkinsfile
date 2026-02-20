@@ -1,69 +1,60 @@
 pipeline {
-  agent { label 'wsl' }
-
-  triggers {
-    githubPush()
-  }
+  agent any
 
   environment {
-    IMAGE = "bhuvanaweb:latest"
-    TEST_CONTAINER = "bhuvanaweb-test"
-    PROD_CONTAINER = "bhuvanaweb"
+    IMAGE_NAME = "bhuvanaweb"
+    IMAGE_TAG  = "latest"
+    CONTAINER_NAME = "bhuvanaweb"
+    HOST_PORT = "1000"
+    CONTAINER_PORT = "80"
   }
 
   stages {
-    stage('Diagnostics') {
+    stage('Checkout') {
       steps {
-        sh '''
-          echo "=== WHO/WHERE ==="
-          whoami
-          hostname
-          uname -a
-
-          echo "=== DOCKER ==="
-          command -v docker
-          docker --version
-        '''
+        checkout scm
       }
     }
 
-    stage('Build') {
+    stage('Build Docker Image') {
       steps {
-        sh '''
-          docker build -t ${IMAGE} .
-        '''
+        sh """
+          docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
+        """
       }
     }
 
-    stage('Test') {
+    stage('Remove Existing Container (if any)') {
       steps {
-        sh '''
-          docker rm -f ${TEST_CONTAINER} || true
-          docker run -d --name ${TEST_CONTAINER} -p 8089:80 ${IMAGE}
-          sleep 3
-          curl -fsS http://localhost:8089 >/dev/null
-          docker rm -f ${TEST_CONTAINER} || true
-        '''
+        sh """
+          if docker ps -a --format '{{.Names}}' | grep -w ${CONTAINER_NAME}; then
+            echo "Stopping old container..."
+            docker stop ${CONTAINER_NAME} || true
+            echo "Removing old container..."
+            docker rm ${CONTAINER_NAME} || true
+          else
+            echo "No existing container found."
+          fi
+        """
       }
     }
 
-    stage('Deploy') {
+    stage('Run New Container') {
       steps {
-        sh '''
-          docker rm -f ${PROD_CONTAINER} || true
-          docker run -d --name ${PROD_CONTAINER} -p 9999:80 --restart unless-stopped ${IMAGE}
-        '''
+        sh """
+          docker run -d --name ${CONTAINER_NAME} -p ${HOST_PORT}:${CONTAINER_PORT} ${IMAGE_NAME}:${IMAGE_TAG}
+          docker ps --filter "name=${CONTAINER_NAME}"
+        """
       }
     }
   }
 
   post {
-    success {
-      echo "✅ Pipeline success"
+    always {
+      echo "Pipeline finished."
     }
-    failure {
-      echo "❌ Pipeline failed"
-    }
+  }
+}
     always {
       sh 'docker ps || true'
     }
