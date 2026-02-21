@@ -90,18 +90,22 @@ pipeline {
       }
     }
 
-    stage('Port-forward Test') {
-      steps {
-        sh '''
-          set -eux
+stage('NodePort Test') {
+  steps {
+    sh '''
+      set -eux
 
-          # Start port-forward in background
-          kubectl port-forward --address 0.0.0.0 svc/${APP_NAME} 1001:1001 > portforward.log 2>&1 &
-          PF_PID=$!
+      MINIKUBE_IP=$(minikube ip)
+      echo "Minikube IP: $MINIKUBE_IP"
 
-          # Give it a moment
-          sleep 3
+      NODE_PORT=$(kubectl get svc ${APP_NAME} -o jsonpath='{.spec.ports[0].nodePort}')
+      echo "NodePort: $NODE_PORT"
 
+      curl -I --max-time 10 "http://${MINIKUBE_IP}:${NODE_PORT}"
+      curl -sS --max-time 10 "http://${MINIKUBE_IP}:${NODE_PORT}" | head -n 5
+    '''
+  }
+}
           # Test locally on Jenkins machine
           curl -I --max-time 10 http://127.0.0.1:1001
 
