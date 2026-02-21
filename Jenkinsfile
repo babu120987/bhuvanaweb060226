@@ -6,7 +6,30 @@ pipeline {
     IMAGE    = "bhuvanaweb:latest"
     K8S_DIR  = "k8s"
   }
+stage('Ensure Minikube Running') {
+  steps {
+    sh '''
+      set -eux
 
+      mkdir -p "$HOME/.minikube"
+
+      # Ensure lock directory is writable for the Jenkins user
+      if [ -d /tmp/minikube-locks ]; then
+        ls -ld /tmp/minikube-locks || true
+      fi
+
+      # Start minikube if profile missing or cluster not running
+      if ! minikube profile list 2>/dev/null | grep -q "^| minikube "; then
+        minikube start --driver=docker
+      else
+        minikube status || minikube start --driver=docker
+      fi
+
+      kubectl config use-context minikube
+      kubectl cluster-info
+    '''
+  }
+}
   stages {
     stage('Checkout') {
       steps { checkout scm }
