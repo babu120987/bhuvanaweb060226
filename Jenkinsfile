@@ -24,28 +24,29 @@ pipeline {
       }
     }
 
-stage('Ensure Minikube Running') {
-  steps {
-    sh '''
-      set -eux
+    stage('Ensure Minikube Running') {
+      steps {
+        sh '''
+          set -eux
 
-      export MINIKUBE_HOME="$HOME"
-      export KUBECONFIG="$HOME/.kube/config"
+          export MINIKUBE_HOME="$HOME"
+          export KUBECONFIG="$HOME/.kube/config"
 
-      # Try start; if it fails, wipe and recreate cleanly
-      if ! minikube status >/dev/null 2>&1; then
-        echo "Minikube not healthy. Recreating..."
-        minikube delete --all --purge || true
-        rm -rf "$HOME/.minikube" "$HOME/.kube"
-      fi
+          # Try start; if it fails, wipe and recreate cleanly
+          if ! minikube status >/dev/null 2>&1; then
+            echo "Minikube not healthy. Recreating..."
+            minikube delete --all --purge || true
+            rm -rf "$HOME/.minikube" "$HOME/.kube"
+          fi
 
-      minikube start --driver=docker --kubernetes-version=v1.28.3
+          minikube start --driver=docker --kubernetes-version=v1.28.3
 
-      kubectl config use-context minikube
-      kubectl cluster-info
-    '''
-  }
-}
+          kubectl config use-context minikube
+          kubectl cluster-info
+        '''
+      }
+    }
+
     stage('Load Image Into Minikube') {
       steps {
         sh '''
@@ -77,41 +78,45 @@ stage('Ensure Minikube Running') {
         '''
       }
     }
-  }
-stage('Verify Service') {
-  steps {
-    sh '''
-      set -eux
-      kubectl get svc bhuvanaweb -o wide
-      kubectl describe svc bhuvanaweb
-      kubectl get endpoints bhuvanaweb -o wide || kubectl get ep bhuvanaweb -o wide
-    '''
-  }
-}
-stage('Port-forward Test') {
-  steps {
-    sh '''
-      set -eux
 
-      # Start port-forward in background
-      kubectl port-forward --address 0.0.0.0 svc/bhuvanaweb 1001:1001 > portforward.log 2>&1 &
-      PF_PID=$!
+    stage('Verify Service') {
+      steps {
+        sh '''
+          set -eux
+          kubectl get svc ${APP_NAME} -o wide
+          kubectl describe svc ${APP_NAME}
+          kubectl get endpoints ${APP_NAME} -o wide || kubectl get ep ${APP_NAME} -o wide
+        '''
+      }
+    }
 
-      # Give it a moment
-      sleep 3
+    stage('Port-forward Test') {
+      steps {
+        sh '''
+          set -eux
 
-      # Test locally on Jenkins machine
-      curl -I --max-time 10 http://127.0.0.1:1001
+          # Start port-forward in background
+          kubectl port-forward --address 0.0.0.0 svc/${APP_NAME} 1001:1001 > portforward.log 2>&1 &
+          PF_PID=$!
 
-      # Stop port-forward
-      kill $PF_PID || true
-      sleep 1
+          # Give it a moment
+          sleep 3
 
-      echo "Port-forward log:"
-      tail -n 50 portforward.log || true
-    '''
-  }
-}
+          # Test locally on Jenkins machine
+          curl -I --max-time 10 http://127.0.0.1:1001
+
+          # Stop port-forward
+          kill $PF_PID || true
+          sleep 1
+
+          echo "Port-forward log:"
+          tail -n 50 portforward.log || true
+        '''
+      }
+    }
+
+  } // ✅ stages ends here
+
   post {
     success {
       echo "✅ Deployed to Kubernetes (minikube) with 2 replicas on service port 1001."
