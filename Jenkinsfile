@@ -59,8 +59,8 @@ stage('Ensure Minikube Running') {
       steps {
         sh '''
           set -eux
-          kubectl apply -f ${K8S_DIR}/deployment.yaml
-          kubectl apply -f ${K8S_DIR}/service.yaml
+          kubectl apply -f ${K8S_DIR}/deployment.yml
+          kubectl apply -f ${K8S_DIR}/service.yml
           kubectl rollout status deployment/${APP_NAME} --timeout=180s
           kubectl get pods -o wide
           kubectl get svc ${APP_NAME} -o wide
