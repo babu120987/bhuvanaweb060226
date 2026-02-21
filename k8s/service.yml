@@ -5,8 +5,8 @@ metadata:
 spec:
   selector:
     app: bhuvanaweb
-  type: ClusterIP
+  type: NodePort
   ports:
-    - name: http
-      port: 1001
+    - port: 1001
       targetPort: 80
+      nodePort: 31001
