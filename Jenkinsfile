@@ -1,20 +1,13 @@
 pipeline {
   agent any
 
-  triggers {
-    githubPush()
-  }
-
   environment {
-    IMAGE_NAME      = "bhuvanaweb"
-    IMAGE_TAG       = "latest"
-    CONTAINER_NAME  = "bhuvanaweb_container"
-    HOST_PORT       = "1000"
-    CONTAINER_PORT  = "80"
+    APP_NAME = "bhuvanaweb"
+    IMAGE    = "bhuvanaweb:latest"
+    K8S_DIR  = "k8s"
   }
 
   stages {
-
     stage('Checkout') {
       steps {
         checkout scm
@@ -23,36 +16,58 @@ pipeline {
 
     stage('Build Docker Image') {
       steps {
-        sh """
-          docker build -t ${IMAGE_NAME}:${IMAGE_TAG} .
-        """
+        sh '''
+          set -eux
+          docker build -t ${IMAGE} .
+        '''
       }
     }
 
-    stage('Remove Existing Container (if any)') {
+    stage('Load Image Into Minikube') {
       steps {
-        sh """
-          docker rm -f ${CONTAINER_NAME} || true
-        """
+        sh '''
+          set -eux
+          minikube status
+          # Load locally-built docker image into minikube
+          minikube image load ${IMAGE}
+        '''
       }
     }
 
-    stage('Run New Container') {
+    stage('Deploy to Kubernetes (Minikube)') {
       steps {
-        sh """
-          docker run -d --name ${CONTAINER_NAME} -p ${HOST_PORT}:${CONTAINER_PORT} ${IMAGE_NAME}:${IMAGE_TAG}
-          docker ps --filter "name=${CONTAINER_NAME}"
-        """
+        sh '''
+          set -eux
+          kubectl config use-context minikube
+
+          kubectl apply -f ${K8S_DIR}/deployment.yaml
+          kubectl apply -f ${K8S_DIR}/service.yaml
+
+          kubectl rollout status deployment/${APP_NAME} --timeout=120s
+          kubectl get pods -o wide
+          kubectl get svc ${APP_NAME} -o wide
+        '''
+      }
+    }
+
+    stage('Smoke Test (inside cluster)') {
+      steps {
+        sh '''
+          set -eux
+          # Test service from inside the cluster
+          kubectl run curl-test --rm -i --tty --image=curlimages/curl:8.5.0 --restart=Never -- \
+            curl -sS http://${APP_NAME}:1001 | head -n 5
+        '''
       }
     }
   }
 
   post {
     success {
-      echo "✅ CI/CD Pipeline completed successfully"
+      echo "✅ Deployed to Minikube with 2 replicas. Service port is 1001."
     }
     failure {
-      echo "❌ CI/CD Pipeline failed"
+      echo "❌ Pipeline failed"
     }
   }
 }
