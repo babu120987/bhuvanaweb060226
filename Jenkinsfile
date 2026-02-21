@@ -7,6 +7,11 @@ pipeline {
     K8S_DIR  = "k8s"
   }
 
+  options {
+    timestamps()
+    ansiColor('xterm')
+  }
+
   stages {
 
     stage('Checkout') {
@@ -19,7 +24,7 @@ pipeline {
       steps {
         sh '''
           set -eux
-          docker build -t ${IMAGE} .
+          docker build -t "${IMAGE}" .
         '''
       }
     }
@@ -32,11 +37,11 @@ pipeline {
           export MINIKUBE_HOME="$HOME"
           export KUBECONFIG="$HOME/.kube/config"
 
-          # Try start; if it fails, wipe and recreate cleanly
+          # Ensure profile exists / cluster is up
           if ! minikube status >/dev/null 2>&1; then
             echo "Minikube not healthy. Recreating..."
             minikube delete --all --purge || true
-            rm -rf "$HOME/.minikube" "$HOME/.kube"
+            rm -rf "$HOME/.minikube" "$HOME/.kube" || true
           fi
 
           minikube start --driver=docker --kubernetes-version=v1.28.3
@@ -51,7 +56,7 @@ pipeline {
       steps {
         sh '''
           set -eux
-          minikube image load ${IMAGE}
+          minikube image load "${IMAGE}"
         '''
       }
     }
@@ -60,11 +65,14 @@ pipeline {
       steps {
         sh '''
           set -eux
-          kubectl apply -f ${K8S_DIR}/deployment.yml
-          kubectl apply -f ${K8S_DIR}/service.yml
-          kubectl rollout status deployment/${APP_NAME} --timeout=180s
+
+          kubectl apply -f "${K8S_DIR}/deployment.yml"
+          kubectl apply -f "${K8S_DIR}/service.yml"
+
+          kubectl rollout status "deployment/${APP_NAME}" --timeout=180s
+
           kubectl get pods -o wide
-          kubectl get svc ${APP_NAME} -o wide
+          kubectl get svc "${APP_NAME}" -o wide
         '''
       }
     }
@@ -73,60 +81,48 @@ pipeline {
       steps {
         sh '''
           set -eux
-          kubectl run curl-test --rm -i --tty --image=curlimages/curl:8.5.0 --restart=Never -- \
+
+          kubectl run curl-test --rm -i --tty \
+            --image=curlimages/curl:8.5.0 \
+            --restart=Never -- \
             sh -lc "curl -sS http://${APP_NAME}:1001 | head -n 5"
         '''
       }
     }
 
-    stage('Verify Service') {
+    stage('NodePort Test (Jenkins machine)') {
       steps {
         sh '''
           set -eux
-          kubectl get svc ${APP_NAME} -o wide
-          kubectl describe svc ${APP_NAME}
-          kubectl get endpoints ${APP_NAME} -o wide || kubectl get ep ${APP_NAME} -o wide
+
+          MINIKUBE_IP=$(minikube ip)
+          NODE_PORT=$(kubectl get svc "${APP_NAME}" -o jsonpath='{.spec.ports[0].nodePort}')
+
+          echo "Minikube IP: ${MINIKUBE_IP}"
+          echo "NodePort: ${NODE_PORT}"
+
+          curl -I --max-time 10 "http://${MINIKUBE_IP}:${NODE_PORT}"
+          curl -sS --max-time 10 "http://${MINIKUBE_IP}:${NODE_PORT}" | head -n 5
         '''
       }
     }
 
-stage('NodePort Test') {
-  steps {
-    sh '''
-      set -eux
-
-      MINIKUBE_IP=$(minikube ip)
-      echo "Minikube IP: $MINIKUBE_IP"
-
-      NODE_PORT=$(kubectl get svc ${APP_NAME} -o jsonpath='{.spec.ports[0].nodePort}')
-      echo "NodePort: $NODE_PORT"
-
-      curl -I --max-time 10 "http://${MINIKUBE_IP}:${NODE_PORT}"
-      curl -sS --max-time 10 "http://${MINIKUBE_IP}:${NODE_PORT}" | head -n 5
-    '''
   }
-}
-          # Test locally on Jenkins machine
-          curl -I --max-time 10 http://127.0.0.1:1001
-
-          # Stop port-forward
-          kill $PF_PID || true
-          sleep 1
-
-          echo "Port-forward log:"
-          tail -n 50 portforward.log || true
-        '''
-      }
-    }
-
-  } // ✅ stages ends here
 
   post {
     success {
-      echo "✅ Deployed to Kubernetes (minikube) with 2 replicas on service port 1001."
+      echo "✅ Deployed ${APP_NAME} to minikube and verified via NodePort."
     }
     failure {
-      echo "❌ Pipeline failed"
+      echo "❌ Pipeline failed. Check console output above."
+    }
+    always {
+      sh '''
+        set +e
+        kubectl get pods -o wide || true
+        kubectl get svc -o wide || true
+      '''
     }
   }
 }
+
