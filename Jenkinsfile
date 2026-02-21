@@ -78,7 +78,40 @@ stage('Ensure Minikube Running') {
       }
     }
   }
+stage('Verify Service') {
+  steps {
+    sh '''
+      set -eux
+      kubectl get svc bhuvanaweb -o wide
+      kubectl describe svc bhuvanaweb
+      kubectl get endpoints bhuvanaweb -o wide || kubectl get ep bhuvanaweb -o wide
+    '''
+  }
+}
+stage('Port-forward Test') {
+  steps {
+    sh '''
+      set -eux
 
+      # Start port-forward in background
+      kubectl port-forward --address 0.0.0.0 svc/bhuvanaweb 1001:1001 > portforward.log 2>&1 &
+      PF_PID=$!
+
+      # Give it a moment
+      sleep 3
+
+      # Test locally on Jenkins machine
+      curl -I --max-time 10 http://127.0.0.1:1001
+
+      # Stop port-forward
+      kill $PF_PID || true
+      sleep 1
+
+      echo "Port-forward log:"
+      tail -n 50 portforward.log || true
+    '''
+  }
+}
   post {
     success {
       echo "✅ Deployed to Kubernetes (minikube) with 2 replicas on service port 1001."
