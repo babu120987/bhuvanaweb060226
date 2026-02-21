@@ -6,33 +6,13 @@ pipeline {
     IMAGE    = "bhuvanaweb:latest"
     K8S_DIR  = "k8s"
   }
-stage('Ensure Minikube Running') {
-  steps {
-    sh '''
-      set -eux
 
-      mkdir -p "$HOME/.minikube"
-
-      # Ensure lock directory is writable for the Jenkins user
-      if [ -d /tmp/minikube-locks ]; then
-        ls -ld /tmp/minikube-locks || true
-      fi
-
-      # Start minikube if profile missing or cluster not running
-      if ! minikube profile list 2>/dev/null | grep -q "^| minikube "; then
-        minikube start --driver=docker
-      else
-        minikube status || minikube start --driver=docker
-      fi
-
-      kubectl config use-context minikube
-      kubectl cluster-info
-    '''
-  }
-}
   stages {
+
     stage('Checkout') {
-      steps { checkout scm }
+      steps {
+        checkout scm
+      }
     }
 
     stage('Build Docker Image') {
@@ -49,7 +29,9 @@ stage('Ensure Minikube Running') {
         sh '''
           set -eux
 
-          # If profile missing OR cluster not running, start it
+          mkdir -p "$HOME/.minikube"
+
+          # Start minikube if profile missing or cluster not running
           if ! minikube profile list 2>/dev/null | grep -q "^| minikube "; then
             echo "Minikube profile not found for this user. Starting minikube..."
             minikube start --driver=docker
@@ -98,7 +80,11 @@ stage('Ensure Minikube Running') {
   }
 
   post {
-    success { echo "✅ Deployed to Kubernetes (minikube) with 2 replicas on service port 1001." }
-    failure { echo "❌ Pipeline failed" }
+    success {
+      echo "✅ Deployed to Kubernetes (minikube) with 2 replicas on service port 1001."
+    }
+    failure {
+      echo "❌ Pipeline failed"
+    }
   }
 }
