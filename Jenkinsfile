@@ -1,4 +1,4 @@
-pipeline {
+kpipeline {
   agent any
 
   environment {
@@ -9,7 +9,6 @@ pipeline {
 
   options {
     timestamps()
-    ansiColor('xterm')
   }
 
   stages {
@@ -37,7 +36,6 @@ pipeline {
           export MINIKUBE_HOME="$HOME"
           export KUBECONFIG="$HOME/.kube/config"
 
-          # Ensure profile exists / cluster is up
           if ! minikube status >/dev/null 2>&1; then
             echo "Minikube not healthy. Recreating..."
             minikube delete --all --purge || true
@@ -125,4 +123,3 @@ pipeline {
     }
   }
 }
-
