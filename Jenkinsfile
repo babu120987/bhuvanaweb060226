@@ -1,4 +1,4 @@
-kpipeline {
+pipeline {
   agent any
 
   environment {
@@ -63,12 +63,9 @@ kpipeline {
       steps {
         sh '''
           set -eux
-
           kubectl apply -f "${K8S_DIR}/deployment.yml"
           kubectl apply -f "${K8S_DIR}/service.yml"
-
           kubectl rollout status "deployment/${APP_NAME}" --timeout=180s
-
           kubectl get pods -o wide
           kubectl get svc "${APP_NAME}" -o wide
         '''
@@ -79,7 +76,6 @@ kpipeline {
       steps {
         sh '''
           set -eux
-
           kubectl run curl-test --rm -i --tty \
             --image=curlimages/curl:8.5.0 \
             --restart=Never -- \
@@ -92,13 +88,10 @@ kpipeline {
       steps {
         sh '''
           set -eux
-
           MINIKUBE_IP=$(minikube ip)
           NODE_PORT=$(kubectl get svc "${APP_NAME}" -o jsonpath='{.spec.ports[0].nodePort}')
-
           echo "Minikube IP: ${MINIKUBE_IP}"
           echo "NodePort: ${NODE_PORT}"
-
           curl -I --max-time 10 "http://${MINIKUBE_IP}:${NODE_PORT}"
           curl -sS --max-time 10 "http://${MINIKUBE_IP}:${NODE_PORT}" | head -n 5
         '''
