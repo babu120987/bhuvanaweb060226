@@ -24,28 +24,28 @@ pipeline {
       }
     }
 
-    stage('Ensure Minikube Running') {
-      steps {
-        sh '''
-          set -eux
+stage('Ensure Minikube Running') {
+  steps {
+    sh '''
+      set -eux
 
-          mkdir -p "$HOME/.minikube"
+      export MINIKUBE_HOME="$HOME"
+      export KUBECONFIG="$HOME/.kube/config"
 
-          # Start minikube if profile missing or cluster not running
-          if ! minikube profile list 2>/dev/null | grep -q "^| minikube "; then
-            echo "Minikube profile not found for this user. Starting minikube..."
-            minikube start --driver=docker
-          else
-            minikube status || minikube start --driver=docker
-          fi
+      # Try start; if it fails, wipe and recreate cleanly
+      if ! minikube status >/dev/null 2>&1; then
+        echo "Minikube not healthy. Recreating..."
+        minikube delete --all --purge || true
+        rm -rf "$HOME/.minikube" "$HOME/.kube"
+      fi
 
-          minikube status
-          kubectl config use-context minikube
-          kubectl cluster-info
-        '''
-      }
-    }
+      minikube start --driver=docker --kubernetes-version=v1.28.3
 
+      kubectl config use-context minikube
+      kubectl cluster-info
+    '''
+  }
+}
     stage('Load Image Into Minikube') {
       steps {
         sh '''
