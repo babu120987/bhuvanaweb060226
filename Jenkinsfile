@@ -1,118 +1,189 @@
 pipeline {
-  agent any
+    agent any
 
-  environment {
-    APP_NAME = "bhuvanaweb"
-    IMAGE    = "bhuvanaweb:latest"
-    K8S_DIR  = "k8s"
-  }
-
-  options {
-    timestamps()
-  }
-
-  stages {
-
-    stage('Checkout') {
-      steps {
-        checkout scm
-      }
+    environment {
+        APP_NAME       = 'bhuvanaweb'
+        IMAGE_NAME     = 'bhuvanaweb:latest'
+        MINIKUBE_HOME  = '/var/lib/jenkins'
+        KUBECONFIG     = '/var/lib/jenkins/.kube/config'
+        CHANGE_MINIKUBE_NONE_USER = 'true'
     }
 
-    stage('Build Docker Image') {
-      steps {
-        sh '''
-          set -eux
-          docker build -t "${IMAGE}" .
-        '''
-      }
+    options {
+        timestamps()
     }
 
-    stage('Ensure Minikube Running') {
-      steps {
-        sh '''
-          set -eux
+    stages {
 
-          export MINIKUBE_HOME="$HOME"
-          export KUBECONFIG="$HOME/.kube/config"
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
 
-          if ! minikube status >/dev/null 2>&1; then
-            echo "Minikube not healthy. Recreating..."
-            minikube delete --all --purge || true
-            rm -rf "$HOME/.minikube" "$HOME/.kube" || true
-          fi
+        stage('Prepare Jenkins Environment') {
+            steps {
+                sh '''
+                    set -eux
 
-          minikube start --driver=docker --kubernetes-version=v1.28.3
+                    mkdir -p "${MINIKUBE_HOME}/.minikube"
+                    mkdir -p "${MINIKUBE_HOME}/.kube"
+                    mkdir -p /tmp/minikube-locks
 
-          kubectl config use-context minikube
-          kubectl cluster-info
-        '''
-      }
+                    chmod 1777 /tmp/minikube-locks || true
+
+                    echo "MINIKUBE_HOME=${MINIKUBE_HOME}"
+                    echo "KUBECONFIG=${KUBECONFIG}"
+                    whoami
+                    pwd
+                '''
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                    set -eux
+                    docker build -t "${IMAGE_NAME}" .
+                    docker images | grep bhuvanaweb || true
+                '''
+            }
+        }
+
+        stage('Ensure Minikube Running') {
+            steps {
+                sh '''
+                    set -eux
+
+                    export MINIKUBE_HOME="${MINIKUBE_HOME}"
+                    export KUBECONFIG="${KUBECONFIG}"
+                    export CHANGE_MINIKUBE_NONE_USER="${CHANGE_MINIKUBE_NONE_USER}"
+
+                    minikube status || true
+
+                    if ! minikube status >/dev/null 2>&1; then
+                        echo "Minikube not healthy. Recreating..."
+                        minikube delete --all || true
+                        rm -rf "${MINIKUBE_HOME}/.minikube" "${MINIKUBE_HOME}/.kube" || true
+                        mkdir -p "${MINIKUBE_HOME}/.minikube" "${MINIKUBE_HOME}/.kube"
+
+                        minikube start --driver=docker --kubernetes-version=v1.28.3
+                    fi
+
+                    kubectl config current-context
+                    kubectl cluster-info
+                    kubectl get nodes -o wide
+                '''
+            }
+        }
+
+        stage('Load Image Into Minikube') {
+            steps {
+                sh '''
+                    set -eux
+
+                    export MINIKUBE_HOME="${MINIKUBE_HOME}"
+                    export KUBECONFIG="${KUBECONFIG}"
+                    export CHANGE_MINIKUBE_NONE_USER="${CHANGE_MINIKUBE_NONE_USER}"
+
+                    minikube image load "${IMAGE_NAME}"
+                '''
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                sh '''
+                    set -eux
+
+                    export MINIKUBE_HOME="${MINIKUBE_HOME}"
+                    export KUBECONFIG="${KUBECONFIG}"
+                    export CHANGE_MINIKUBE_NONE_USER="${CHANGE_MINIKUBE_NONE_USER}"
+
+                    kubectl apply -f k8s/deployment.yml
+                    kubectl apply -f k8s/service.yml
+
+                    kubectl rollout restart deployment/${APP_NAME} || true
+                    kubectl rollout status deployment/${APP_NAME} --timeout=180s
+                '''
+            }
+        }
+
+        stage('Verify Deployment') {
+            steps {
+                sh '''
+                    set -eux
+
+                    export MINIKUBE_HOME="${MINIKUBE_HOME}"
+                    export KUBECONFIG="${KUBECONFIG}"
+                    export CHANGE_MINIKUBE_NONE_USER="${CHANGE_MINIKUBE_NONE_USER}"
+
+                    kubectl get deployments -o wide
+                    kubectl get pods -o wide
+                    kubectl get svc -o wide
+                    kubectl get endpoints ${APP_NAME}
+                '''
+            }
+        }
+
+        stage('Smoke Test (inside cluster)') {
+            steps {
+                sh '''
+                    set -eux
+
+                    export MINIKUBE_HOME="${MINIKUBE_HOME}"
+                    export KUBECONFIG="${KUBECONFIG}"
+                    export CHANGE_MINIKUBE_NONE_USER="${CHANGE_MINIKUBE_NONE_USER}"
+
+                    kubectl run smoke-test --rm -i --restart=Never \
+                      --image=curlimages/curl:8.8.0 \
+                      -- curl -I http://${APP_NAME}:1001
+                '''
+            }
+        }
+
+        stage('NodePort Test (Jenkins machine)') {
+            steps {
+                sh '''
+                    set -eux
+
+                    export MINIKUBE_HOME="${MINIKUBE_HOME}"
+                    export KUBECONFIG="${KUBECONFIG}"
+                    export CHANGE_MINIKUBE_NONE_USER="${CHANGE_MINIKUBE_NONE_USER}"
+
+                    NODE_IP=$(minikube ip | tail -n 1)
+                    echo "Minikube IP: ${NODE_IP}"
+
+                    curl -I --max-time 20 http://${NODE_IP}:31001 || true
+                '''
+            }
+        }
     }
 
-    stage('Load Image Into Minikube') {
-      steps {
-        sh '''
-          set -eux
-          minikube image load "${IMAGE}"
-        '''
-      }
-    }
+    post {
+        success {
+            echo 'Deployment completed successfully.'
+        }
 
-    stage('Deploy to Kubernetes') {
-      steps {
-        sh '''
-          set -eux
-          kubectl apply -f "${K8S_DIR}/deployment.yml"
-          kubectl apply -f "${K8S_DIR}/service.yml"
-          kubectl rollout status "deployment/${APP_NAME}" --timeout=180s
-          kubectl get pods -o wide
-          kubectl get svc "${APP_NAME}" -o wide
-        '''
-      }
-    }
+        failure {
+            echo 'Pipeline failed. Debug info below:'
+            sh '''
+                set +e
+                export MINIKUBE_HOME="${MINIKUBE_HOME}"
+                export KUBECONFIG="${KUBECONFIG}"
+                export CHANGE_MINIKUBE_NONE_USER="${CHANGE_MINIKUBE_NONE_USER}"
 
-    stage('Smoke Test (inside cluster)') {
-      steps {
-        sh '''
-          set -eux
-          kubectl run curl-test --rm -i --tty \
-            --image=curlimages/curl:8.5.0 \
-            --restart=Never -- \
-            sh -lc "curl -sS http://${APP_NAME}:1001 | head -n 5"
-        '''
-      }
-    }
+                kubectl get pods -o wide || true
+                kubectl get svc -o wide || true
+                kubectl describe deployment ${APP_NAME} || true
+                kubectl describe svc ${APP_NAME} || true
+                kubectl logs -l app=${APP_NAME} --tail=100 || true
+                minikube logs --problems || true
+            '''
+        }
 
-    stage('NodePort Test (Jenkins machine)') {
-      steps {
-        sh '''
-          set -eux
-          MINIKUBE_IP=$(minikube ip)
-          NODE_PORT=$(kubectl get svc "${APP_NAME}" -o jsonpath='{.spec.ports[0].nodePort}')
-          echo "Minikube IP: ${MINIKUBE_IP}"
-          echo "NodePort: ${NODE_PORT}"
-          curl -I --max-time 10 "http://${MINIKUBE_IP}:${NODE_PORT}"
-          curl -sS --max-time 10 "http://${MINIKUBE_IP}:${NODE_PORT}" | head -n 5
-        '''
-      }
+        always {
+            cleanWs()
+        }
     }
-
-  }
-
-  post {
-    success {
-      echo "✅ Deployed ${APP_NAME} to minikube and verified via NodePort."
-    }
-    failure {
-      echo "❌ Pipeline failed. Check console output above."
-    }
-    always {
-      sh '''
-        set +e
-        kubectl get pods -o wide || true
-        kubectl get svc -o wide || true
-      '''
-    }
-  }
 }
