@@ -56,6 +56,26 @@ const clearProductDraft = () => {
   try { localStorage.removeItem(productDraftKey); } catch (_error) { /* Storage may be unavailable. */ }
 };
 
+const productFieldLabel = (field) => {
+  const label = field?.closest('label');
+  const labelText = label ? Array.from(label.childNodes)
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .map((node) => node.textContent)
+    .join(' ') : '';
+  return labelText.replace(/\s*·\s*required\s*/i, '').trim() || field?.name || 'required field';
+};
+
+const showProductFormError = (form, message, field = null) => {
+  const errorRoot = form.querySelector('[data-product-form-error]');
+  errorRoot.textContent = message;
+  errorRoot.hidden = false;
+  showToast(message);
+  if (field) {
+    field.focus({ preventScroll: true });
+    field.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+};
+
 const showToast = (message) => {
   clearTimeout(toastTimer);
   toast.textContent = message;
@@ -232,6 +252,7 @@ const openProductForm = async (product = null) => {
 
     document.body.classList.add('detail-open');
     detailDrawer.setAttribute('aria-hidden', 'false');
+    form?.elements.namedItem('name')?.focus();
   } catch (error) {
     showToast(error.message);
   }
@@ -328,68 +349,56 @@ document.addEventListener('submit', async (event) => {
   const form = event.target.closest('[data-product-form]');
   if (!form) return;
   event.preventDefault();
-  const fields = new FormData(form);
   const errorRoot = form.querySelector('[data-product-form-error]');
   const submit = form.querySelector('[type="submit"]');
   errorRoot.hidden = true;
- if (!form.checkValidity()) {
-  const invalidFields = Array.from(form.elements)
-    .filter((field) =>
-      typeof field.checkValidity === 'function' &&
-      !field.checkValidity()
-    );
 
-  const invalidField = invalidFields[0];
-
-  const fieldName =
-    invalidField?.closest('label')?.childNodes[0]?.textContent
-      ?.replace('· required', '')
-      .trim() ||
-    invalidField?.name ||
-    'required field';
-
-  const message = invalidField?.validity?.valueMissing
-    ? `Please enter ${fieldName}.`
-    : `Invalid ${fieldName}: ${
-        invalidField?.validationMessage || 'Check this value.'
-      }`;
-
-  errorRoot.textContent = message;
-  errorRoot.hidden = false;
-
-  showToast(message);
-
-  console.log(
-    'Invalid product fields:',
-    invalidFields.map((field) => ({
+  const invalidFields = Array.from(form.elements).filter((field) =>
+    typeof field.checkValidity === 'function' && !field.checkValidity()
+  );
+  if (invalidFields.length) {
+    const invalidField = invalidFields[0];
+    const fieldName = productFieldLabel(invalidField);
+    const message = invalidField.validity.valueMissing
+      ? `Please enter ${fieldName}.`
+      : `Invalid ${fieldName}: ${invalidField.validationMessage || 'Check this value.'}`;
+    showProductFormError(form, message, invalidField);
+    console.warn('Invalid product fields:', invalidFields.map((field) => ({
       name: field.name,
       value: field.value,
       validationMessage: field.validationMessage
-    }))
-  );
+    })));
+    return;
+  }
 
-  return;
-}
-  
+  const fields = new FormData(form);
+  const price = Number(fields.get('price'));
+  const compareAtPriceText = String(fields.get('compareAtPrice') || '').trim();
+  const compareAtPrice = compareAtPriceText ? Number(compareAtPriceText) : null;
+  if (compareAtPrice !== null && compareAtPrice < price) {
+    const compareAtPriceField = form.elements.namedItem('compareAtPrice');
+    showProductFormError(form, 'Compare-at price cannot be lower than the selling price.', compareAtPriceField);
+    return;
+  }
+
   submit.disabled = true;
   submit.textContent = form.dataset.productId ? 'Saving…' : 'Creating…';
-  const compareAtPrice = fields.get('compareAtPrice').trim();
   const payload = {
-    name: fields.get('name'),
-    slug: fields.get('slug'),
-    sku: fields.get('sku'),
-    categorySlug: fields.get('categorySlug'),
-    scentFamily: fields.get('scentFamily'),
-    concentration: fields.get('concentration'),
+    name: String(fields.get('name')).trim(),
+    slug: String(fields.get('slug')).trim(),
+    sku: String(fields.get('sku')).trim(),
+    categorySlug: String(fields.get('categorySlug')).trim(),
+    scentFamily: String(fields.get('scentFamily')).trim(),
+    concentration: String(fields.get('concentration')).trim(),
     sizeMl: Number(fields.get('sizeMl')),
-    pricePaise: Math.round(Number(fields.get('price')) * 100),
-    compareAtPricePaise: compareAtPrice ? Math.round(Number(compareAtPrice) * 100) : null,
+    pricePaise: Math.round(price * 100),
+    compareAtPricePaise: compareAtPrice === null ? null : Math.round(compareAtPrice * 100),
     quantity: Number(fields.get('quantity')),
     lowStockThreshold: Number(fields.get('lowStockThreshold')),
-    shortDescription: fields.get('shortDescription'),
-    description: fields.get('description'),
-    imageUrl: fields.get('imageUrl'),
-    imageAlt: fields.get('imageAlt'),
+    shortDescription: String(fields.get('shortDescription') || '').trim(),
+    description: String(fields.get('description') || '').trim(),
+    imageUrl: String(fields.get('imageUrl') || '').trim(),
+    imageAlt: String(fields.get('imageAlt') || '').trim(),
     active: fields.has('active'),
     featured: fields.has('featured')
   };
@@ -404,8 +413,7 @@ document.addEventListener('submit', async (event) => {
     await loadProducts();
     showToast(`${result.product.name} ${editing ? 'updated' : 'created'}`);
   } catch (error) {
-    errorRoot.textContent = error.message;
-    errorRoot.hidden = false;
+    showProductFormError(form, error.message || 'The product could not be saved.');
     submit.disabled = false;
     submit.textContent = editing ? 'Save changes' : 'Create product';
   }
@@ -439,12 +447,11 @@ document.addEventListener('click', async (event) => {
     return;
   }
   if (event.target.closest('[data-detail-close]')) {
-  return closeDetail();
-}
+    closeDetail();
+    return;
+  }
 
-if (event.target.closest('.detail-drawer')) {
-  return;
-}
+  if (event.target.closest('.detail-drawer')) return;
   const viewButton = event.target.closest('[data-admin-view]');
   if (viewButton) {
     try { await switchAdminView(viewButton.dataset.adminView); } catch (error) { showToast(error.message); }

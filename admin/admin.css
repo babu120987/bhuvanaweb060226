@@ -72,10 +72,11 @@ tbody tr[data-order-id]:hover { background:var(--panel-2); }
 .status-cancelled,.status-returned { border-color:#754d48; color:#e4a69c; }
 .empty-state { height:180px; color:var(--muted); text-align:center; }
 .results-note { margin:0; padding:14px 20px; color:var(--muted); font-size:.65rem; }
-.detail-shell { position:fixed; z-index:20; inset:0; pointer-events:none; }
+.detail-shell { position:fixed; z-index:20; inset:0; visibility:hidden; pointer-events:none; }
 .detail-overlay { position:absolute; inset:0; border:0; background:rgba(0,0,0,.72); opacity:0; transition:.25s; }
 .detail-drawer { position:absolute; top:0; right:0; width:min(590px,100%); height:100%; overflow-y:auto; border-left:1px solid var(--line); background:var(--panel); transform:translateX(100%); transition:.3s; }
-.detail-open .detail-shell,.detail-open .detail-overlay,.detail-open .detail-drawer { pointer-events:auto; }
+.detail-open .detail-shell { visibility:visible; pointer-events:auto; }
+.detail-open .detail-overlay,.detail-open .detail-drawer { pointer-events:auto; }
 .detail-open .detail-overlay { opacity:1; }
 .detail-open .detail-drawer { transform:none; }
 .detail-head { display:flex; justify-content:space-between; gap:20px; padding:30px; border-bottom:1px solid var(--line); }
@@ -125,14 +126,3 @@ tbody tr[data-order-id]:hover { background:var(--panel-2); }
 
 @media(max-width:900px){.stats{grid-template-columns:1fr 1fr}.orders-tools{align-items:stretch;flex-direction:column}.search{min-width:0}.workspace{width:min(100% - 28px,1400px)}}
 @media(max-width:620px){.login-card{padding:34px 25px}.topbar{height:66px}.topbar .brand{font-size:1.35rem}.admin-label{display:none}.section-nav{gap:12px}.section-nav button{font-size:.58rem}[data-logout]{font-size:0;width:28px}[data-logout]::after{content:'Lock';font-size:.58rem}.workspace{padding-top:35px}.page-heading h1{font-size:3rem}.stats{grid-template-columns:1fr 1fr}.stats article{padding:18px 15px}.stats strong{font-size:1.55rem}th,td{padding:14px}.detail-head,.detail-body{padding-right:20px;padding-left:20px}.detail-grid,.product-form-grid{grid-template-columns:1fr}.product-form-grid .full{grid-column:auto}.detail-drawer{width:100%}}
-.detail-drawer {
-  pointer-events: none;
-}
-
-.detail-drawer[aria-hidden="false"] {
-  pointer-events: auto;
-}
-
-.detail-drawer[aria-hidden="true"] {
-  pointer-events: none;
-}
