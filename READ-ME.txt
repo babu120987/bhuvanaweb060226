@@ -1,11 +1,39 @@
-BUVA — MODERN FINE FRAGRANCE
+BUVA — THREE-TIER ECOMMERCE FOUNDATION
 
-Buva is a responsive multi-page fragrance brand website built with semantic HTML,
-CSS and lightweight JavaScript. The site includes the home page, brand story,
-fragrance collection, house, journal, contact and custom 404 page.
+The repository is organized into independent application tiers:
 
-Local preview with Docker Compose:
+  frontend/   Customer-facing Buva storefront
+  backend/    Node.js API service with PostgreSQL connectivity
+  database/   PostgreSQL schema, migrations and seed data
+  admin/      Product, inventory and order-management interface
+  k8s/        Kubernetes deployment configuration
+
+Current local services:
+
+  Website: http://localhost:8080
+  Backend health check: http://localhost:9000/health
+
+Start with Docker Compose:
+
   docker compose up --build
 
-Then visit:
-  http://localhost:8080
+Step 5 is complete: PostgreSQL contains the ecommerce data model, the backend
+exposes catalogue, transactional guest-cart and checkout endpoints, and the
+storefront supports a persistent cart, delivery form, coupon redemption,
+cash-on-delivery order placement and confirmation through Nginx's same-origin
+/api proxy.
+
+Step 6 is complete: the protected admin dashboard at /admin/ provides order
+metrics, filtering, search, detail views and controlled fulfilment updates.
+Cancellations and returns restore inventory transactionally. Configure access
+with ADMIN_API_KEY.
+
+Step 7 is complete: the admin dashboard also provides catalogue metrics,
+product search and filters, product creation/editing, merchandising controls,
+pricing, imagery and guarded inventory updates.
+
+Step 8 is complete: customers can register, sign in, review recent orders and
+reuse saved delivery addresses. Checkout supports Razorpay Standard Checkout
+for INR with server-created provider orders, mandatory signature and captured-
+payment verification, plus signed webhook handling. Add Razorpay test keys to
+.env before testing online payments; cash on delivery remains available.

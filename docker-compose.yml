@@ -2,11 +2,48 @@ services:
   web:
     build: .
     container_name: bhuvanaweb
+    depends_on:
+      backend:
+        condition: service_started
     ports:
       - "8080:80"
 
-  webhook:
-    build: ./webhook-server
-    container_name: bhuvanaweb_webhook
+  backend:
+    build: ./backend
+    container_name: buva_backend
+    environment:
+      PORT: 9000
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB:-buva}
+      DB_USER: ${POSTGRES_USER:-buva}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-buva_local}
+      ADMIN_API_KEY: ${ADMIN_API_KEY:-buva_admin_local}
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+    depends_on:
+      database:
+        condition: service_healthy
     ports:
       - "9000:9000"
+
+  database:
+    build: ./database
+    container_name: buva_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-buva}
+      POSTGRES_USER: ${POSTGRES_USER:-buva}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-buva_local}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-buva} -d ${POSTGRES_DB:-buva}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - buva_postgres_data:/var/lib/postgresql/data
+
+volumes:
+  buva_postgres_data:
