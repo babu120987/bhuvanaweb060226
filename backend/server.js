@@ -165,7 +165,7 @@ const parseAccountIdentity = (body = {}) => {
   const phone = parseText(body.phone, "Phone", { min: 10, max: 20 });
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 10 || digits.length > 15) throw new ApiError(400, "A valid phone number is required");
-  return { fullName, email, phone };
+  return { fullName, email, phone: digits };
 };
 
 const parsePassword = (value) => {
@@ -393,7 +393,11 @@ app.post("/api/auth/register", asyncRoute(async (request, response) => {
   const identity = parseAccountIdentity(request.body);
   const password = parsePassword(request.body?.password);
   const result = await withTransaction(async (client) => {
-    const existing = await client.query("SELECT 1 FROM customers WHERE email = $1 OR phone = $2", [identity.email, identity.phone]);
+    const existing = await client.query(`
+      SELECT 1
+      FROM customers
+      WHERE email = $1 OR REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = $2
+    `, [identity.email, identity.phone]);
     if (existing.rowCount) throw new ApiError(409, "An account already exists with this email or phone");
     const passwordHash = await hashPassword(password);
     const customerResult = await client.query(`
@@ -408,15 +412,21 @@ app.post("/api/auth/register", asyncRoute(async (request, response) => {
 }));
 
 app.post("/api/auth/login", asyncRoute(async (request, response) => {
-  const email = parseText(request.body?.email, "Email", { max: 254 }).toLowerCase();
+  const identifier = parseText(request.body?.identifier || request.body?.email, "Email or phone", { max: 254 });
   const password = parsePassword(request.body?.password);
+  const isEmail = identifier.includes("@");
+  const email = isEmail ? identifier.toLowerCase() : null;
+  const phoneDigits = isEmail ? null : identifier.replace(/\D/g, "");
+  if (isEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ApiError(400, "A valid email is required");
+  if (!isEmail && (phoneDigits.length < 10 || phoneDigits.length > 15)) throw new ApiError(400, "A valid phone number is required");
   const result = await pool.query(`
     SELECT id, email, phone, full_name AS "fullName", password_hash
     FROM customers
-    WHERE email = $1 AND active = TRUE
-  `, [email]);
+    WHERE active = TRUE
+      AND (($1::TEXT IS NOT NULL AND email = $1) OR ($2::TEXT IS NOT NULL AND REGEXP_REPLACE(phone, '[^0-9]', '', 'g') = $2))
+  `, [email, phoneDigits]);
   if (result.rowCount === 0 || !await verifyPassword(password, result.rows[0].password_hash)) {
-    throw new ApiError(401, "Email or password is incorrect");
+    throw new ApiError(401, "Email/phone or password is incorrect");
   }
   const { password_hash: _passwordHash, ...customer } = result.rows[0];
   const session = await createCustomerSession(customer.id);

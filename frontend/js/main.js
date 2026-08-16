@@ -337,7 +337,7 @@ const accountAuthMarkup = (mode = 'login') => mode === 'register' ? `
   <form class="account-form" data-register-form>
     <p>Create an account to save delivery details and follow your Buva orders.</p>
     <div class="field"><label>Full name</label><input name="fullName" autocomplete="name" required minlength="2" maxlength="100"></div>
-    <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
+    <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required maxlength="254"></div>
     <div class="field"><label>Phone</label><input name="phone" type="tel" autocomplete="tel" required minlength="10" maxlength="20"></div>
     <div class="field"><label>Password</label><input name="password" type="password" autocomplete="new-password" required minlength="8" maxlength="128"></div>
     <p class="checkout-error" data-account-error role="alert" hidden></p>
@@ -346,7 +346,7 @@ const accountAuthMarkup = (mode = 'login') => mode === 'register' ? `
   </form>` : `
   <form class="account-form" data-login-form>
     <p>Sign in to view orders and reuse saved delivery details.</p>
-    <div class="field"><label>Email</label><input name="email" type="email" autocomplete="email" required></div>
+    <div class="field"><label>Email or phone</label><input name="identifier" autocomplete="username" required maxlength="254"></div>
     <div class="field"><label>Password</label><input name="password" type="password" autocomplete="current-password" required minlength="8" maxlength="128"></div>
     <p class="checkout-error" data-account-error role="alert" hidden></p>
     <button class="button" type="submit">Sign in</button>

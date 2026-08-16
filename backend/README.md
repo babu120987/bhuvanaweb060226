@@ -62,7 +62,9 @@ Customer account endpoints:
 
 Customer sessions use random bearer tokens stored as SHA-256 hashes, and
 passwords use salted scrypt hashes. Authenticated checkout links the order to
-the customer and can save the delivery address.
+the customer and can save the delivery address. Registration requires a full
+name, email address, phone number and password; sign-in accepts either the
+registered email address or phone number with the password.
 
 Razorpay Standard Checkout:
 
