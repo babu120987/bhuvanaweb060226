@@ -3,7 +3,7 @@ services:
     build: .
     container_name: bhuvanaweb
     ports:
-      - "8000:80"
+      - "8080:80"
 
   webhook:
     build: ./webhook-server
