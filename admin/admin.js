@@ -1,4 +1,5 @@
 const storageKey = 'buvaAdminKey';
+const productDraftKey = 'buvaNewProductDraft';
 const loginView = document.querySelector('[data-login-view]');
 const dashboard = document.querySelector('[data-dashboard]');
 const ordersBody = document.querySelector('[data-orders-body]');
@@ -30,6 +31,30 @@ const formatDate = (value) => new Intl.DateTimeFormat('en-IN', {
 
 const titleCase = (value) => value.charAt(0).toUpperCase() + value.slice(1);
 const statusBadge = (status) => `<span class="status status-${escapeHtml(status)}">${escapeHtml(status)}</span>`;
+const productSlug = (value) => String(value || '')
+  .toLowerCase()
+  .normalize('NFKD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[^a-z0-9]+/g, '-')
+  .replace(/^-|-$/g, '');
+
+const readProductDraft = () => {
+  try { return JSON.parse(localStorage.getItem(productDraftKey) || 'null'); } catch (_error) { return null; }
+};
+
+const saveProductDraft = (form) => {
+  if (form.dataset.productId) return;
+  const draft = {};
+  Array.from(form.elements).forEach((field) => {
+    if (!field.name) return;
+    draft[field.name] = field.type === 'checkbox' ? field.checked : field.value;
+  });
+  try { localStorage.setItem(productDraftKey, JSON.stringify(draft)); } catch (_error) { /* Storage may be unavailable. */ }
+};
+
+const clearProductDraft = () => {
+  try { localStorage.removeItem(productDraftKey); } catch (_error) { /* Storage may be unavailable. */ }
+};
 
 const showToast = (message) => {
   clearTimeout(toastTimer);
@@ -113,7 +138,7 @@ const renderProductSummary = (summary) => {
 const renderProducts = (products) => {
   productsById = new Map(products.map((product) => [String(product.id), product]));
   if (!products.length) {
-    productsBody.innerHTML = '<tr><td colspan="6" class="empty-state">No products match this view.</td></tr>';
+    productsBody.innerHTML = '<tr><td colspan="7" class="empty-state">No products match this view.</td></tr>';
     return;
   }
   productsBody.innerHTML = products.map((product) => {
@@ -122,9 +147,10 @@ const renderProducts = (products) => {
       <td><div class="product-cell"><img src="${escapeHtml(product.imageUrl || '/perfume.jpg')}" alt=""><div><strong>${escapeHtml(product.name)}</strong><span>${escapeHtml(product.slug)}</span></div></div></td>
       <td>${escapeHtml(product.sku)}</td>
       <td>${escapeHtml(product.categoryName)}</td>
-      <td>${formatPrice(product.pricePaise)}</td>
-      <td class="${stockClass}">${product.availableQuantity} <span class="sr-only">available</span></td>
+      <td><label class="inline-product-field"><span class="sr-only">Price for ${escapeHtml(product.name)}</span><span>₹</span><input data-product-price type="number" value="${product.pricePaise / 100}" min="0" step="0.01" aria-label="Price for ${escapeHtml(product.name)}"></label></td>
+      <td class="${stockClass}"><label class="inline-product-field"><span class="sr-only">Inventory for ${escapeHtml(product.name)}</span><input data-product-quantity type="number" value="${product.quantity}" min="${product.reservedQuantity}" max="1000000" step="1" aria-label="Inventory for ${escapeHtml(product.name)}"></label></td>
       <td>${product.active ? '<span class="status status-delivered">Active</span>' : '<span class="status status-cancelled">Archived</span>'}</td>
+      <td><div class="inline-product-actions"><button class="status-action" type="button" data-product-quick-save="${escapeHtml(product.id)}">Save</button><button class="text-button" type="button" data-product-edit="${escapeHtml(product.id)}">Full edit</button></div></td>
     </tr>`;
   }).join('');
 };
@@ -152,16 +178,17 @@ const productFormMarkup = (product = null) => {
   const familyOptions = ['floral', 'fresh', 'woody', 'sets'].map((family) => `<option value="${family}"${family === product?.scentFamily ? ' selected' : ''}>${titleCase(family)}</option>`).join('');
   return `
     <div class="detail-head"><div><p class="eyebrow">Catalogue</p><h2 id="detail-title">${editing ? 'Edit product' : 'New product'}</h2></div><button class="close-button" type="button" data-detail-close aria-label="Close">×</button></div>
-    <div class="detail-body"><form class="product-form" data-product-form data-product-id="${editing ? escapeHtml(product.id) : ''}">
+    <div class="detail-body" style="max-height: calc(100vh - 170px); overflow-y: auto;">
+  <form class="product-form" data-product-form data-product-id="${editing ? escapeHtml(product.id) : ''}" novalidate>
       <div class="product-form-grid">
-        <label class="full">Product name<input name="name" value="${value('name')}" required minlength="2" maxlength="140"></label>
-        <label>Slug<input name="slug" value="${value('slug')}" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxlength="100"></label>
-        <label>SKU<input name="sku" value="${value('sku')}" required pattern="[A-Za-z0-9][A-Za-z0-9-]*" maxlength="60"></label>
+        <label class="full">Product name · required<input name="name" value="${value('name')}" placeholder="Example: Madurai Jasmine" required minlength="2" maxlength="140"></label>
+        <label>Slug · required<input name="slug" value="${value('slug')}" placeholder="madurai-jasmine" required pattern="[a-z0-9]+(?:-[a-z0-9]+)*" maxlength="100"></label>
+        <label>SKU · required<input name="sku" value="${value('sku')}" placeholder="BUVA-MJ-050" required pattern="[A-Za-z0-9][A-Za-z0-9-]*" maxlength="60"></label>
         <label>Category<select name="categorySlug" required>${categoryOptions}</select></label>
         <label>Scent family<select name="scentFamily" required>${familyOptions}</select></label>
         <label>Concentration<input name="concentration" value="${value('concentration', 'Eau de Parfum')}" required maxlength="80"></label>
         <label>Size · ml<input name="sizeMl" type="number" value="${value('sizeMl', 50)}" min="1" max="10000" required></label>
-        <label>Price · ₹<input name="price" type="number" value="${product ? product.pricePaise / 100 : ''}" min="0" step="0.01" required></label>
+        <label>Price · ₹ · required<input name="price" type="number" value="${product ? product.pricePaise / 100 : ''}" placeholder="1490" min="0" step="0.01" required></label>
         <label>Compare-at price · ₹<input name="compareAtPrice" type="number" value="${product?.compareAtPricePaise ? product.compareAtPricePaise / 100 : ''}" min="0" step="0.01"></label>
         <label>Inventory quantity<input name="quantity" type="number" value="${value('quantity', 0)}" min="${product?.reservedQuantity || 0}" max="1000000" required></label>
         <label>Low-stock threshold<input name="lowStockThreshold" type="number" value="${value('lowStockThreshold', 5)}" min="0" max="1000000" required></label>
@@ -175,8 +202,9 @@ const productFormMarkup = (product = null) => {
         <label><input name="active" type="checkbox"${product?.active ?? true ? ' checked' : ''}> Available in storefront</label>
         <label><input name="featured" type="checkbox"${product?.featured ? ' checked' : ''}> Featured</label>
       </div>
+      ${editing ? '' : '<p class="product-form-help">Your draft is saved automatically. The product is added only after you select Create product.</p>'}
       <p class="product-form-error" data-product-form-error role="alert" hidden></p>
-      <div class="product-form-actions"><button class="secondary-action" type="button" data-detail-close>Cancel</button><button class="status-action" type="submit">${editing ? 'Save changes' : 'Create product'}</button></div>
+      <div class="product-form-actions"><button class="secondary-action" type="button" ${editing ? 'data-detail-close' : 'data-product-cancel'}>Cancel</button><button class="status-action" type="submit">${editing ? 'Save changes' : 'Create product'}</button></div>
     </form></div>`;
 };
 
@@ -184,9 +212,26 @@ const openProductForm = async (product = null) => {
   try {
     await ensureProductCategories();
     detailContent.innerHTML = productFormMarkup(product);
+
+    const form = detailContent.querySelector('[data-product-form]');
+    const draft = product ? null : readProductDraft();
+
+    if (draft && form) {
+      Object.entries(draft).forEach(([name, value]) => {
+        const field = form.elements.namedItem(name);
+
+        if (!field) return;
+
+        if (field.type === 'checkbox') {
+          field.checked = Boolean(value);
+        } else {
+          field.value = value;
+        }
+      });
+    }
+
     document.body.classList.add('detail-open');
     detailDrawer.setAttribute('aria-hidden', 'false');
-    document.querySelector('[name="name"]')?.focus();
   } catch (error) {
     showToast(error.message);
   }
@@ -287,6 +332,45 @@ document.addEventListener('submit', async (event) => {
   const errorRoot = form.querySelector('[data-product-form-error]');
   const submit = form.querySelector('[type="submit"]');
   errorRoot.hidden = true;
+ if (!form.checkValidity()) {
+  const invalidFields = Array.from(form.elements)
+    .filter((field) =>
+      typeof field.checkValidity === 'function' &&
+      !field.checkValidity()
+    );
+
+  const invalidField = invalidFields[0];
+
+  const fieldName =
+    invalidField?.closest('label')?.childNodes[0]?.textContent
+      ?.replace('· required', '')
+      .trim() ||
+    invalidField?.name ||
+    'required field';
+
+  const message = invalidField?.validity?.valueMissing
+    ? `Please enter ${fieldName}.`
+    : `Invalid ${fieldName}: ${
+        invalidField?.validationMessage || 'Check this value.'
+      }`;
+
+  errorRoot.textContent = message;
+  errorRoot.hidden = false;
+
+  showToast(message);
+
+  console.log(
+    'Invalid product fields:',
+    invalidFields.map((field) => ({
+      name: field.name,
+      value: field.value,
+      validationMessage: field.validationMessage
+    }))
+  );
+
+  return;
+}
+  
   submit.disabled = true;
   submit.textContent = form.dataset.productId ? 'Saving…' : 'Creating…';
   const compareAtPrice = fields.get('compareAtPrice').trim();
@@ -315,6 +399,7 @@ document.addEventListener('submit', async (event) => {
       method: editing ? 'PATCH' : 'POST',
       body: JSON.stringify(payload)
     });
+    if (!editing) clearProductDraft();
     closeDetail();
     await loadProducts();
     showToast(`${result.product.name} ${editing ? 'updated' : 'created'}`);
@@ -326,9 +411,40 @@ document.addEventListener('submit', async (event) => {
   }
 });
 
+document.addEventListener('input', (event) => {
+  const form = event.target.closest('[data-product-form]');
+  if (!form || form.dataset.productId) return;
+  if (event.target.name === 'name') {
+    const slug = form.elements.namedItem('slug');
+    const previousAutoSlug = form.dataset.autoSlug || '';
+    if (slug && (!slug.value || slug.value === previousAutoSlug)) {
+      slug.value = productSlug(event.target.value);
+      form.dataset.autoSlug = slug.value;
+    }
+  }
+  saveProductDraft(form);
+});
+
+document.addEventListener('change', (event) => {
+  const form = event.target.closest('[data-product-form]');
+  if (form && !form.dataset.productId) saveProductDraft(form);
+});
+
 document.addEventListener('click', async (event) => {
   if (event.target.closest('[data-logout]')) return showLogin();
-  if (event.target.closest('[data-detail-close]')) return closeDetail();
+  if (event.target.closest('[data-product-cancel]')) {
+    clearProductDraft();
+    closeDetail();
+    showToast('New product draft discarded');
+    return;
+  }
+  if (event.target.closest('[data-detail-close]')) {
+  return closeDetail();
+}
+
+if (event.target.closest('.detail-drawer')) {
+  return;
+}
   const viewButton = event.target.closest('[data-admin-view]');
   if (viewButton) {
     try { await switchAdminView(viewButton.dataset.adminView); } catch (error) { showToast(error.message); }
@@ -356,6 +472,54 @@ document.addEventListener('click', async (event) => {
     try { await loadOrders(); showToast('Orders refreshed'); } catch (error) { showToast(error.message); }
     return;
   }
+  const quickSave = event.target.closest('[data-product-quick-save]');
+  if (quickSave) {
+    const product = productsById.get(quickSave.dataset.productQuickSave);
+    const productRow = quickSave.closest('[data-product-id]');
+    const price = Number(productRow.querySelector('[data-product-price]').value);
+    const quantity = Number(productRow.querySelector('[data-product-quantity]').value);
+    if (!Number.isFinite(price) || price < 0 || !Number.isInteger(quantity) || quantity < product.reservedQuantity) {
+      showToast(`Enter a valid price and inventory of at least ${product.reservedQuantity}`);
+      return;
+    }
+    quickSave.disabled = true;
+    try {
+      const result = await adminRequest(`/api/admin/products/${product.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          name: product.name,
+          slug: product.slug,
+          sku: product.sku,
+          categorySlug: product.categorySlug,
+          scentFamily: product.scentFamily,
+          concentration: product.concentration,
+          sizeMl: product.sizeMl,
+          pricePaise: Math.round(price * 100),
+          compareAtPricePaise: product.compareAtPricePaise,
+          quantity,
+          lowStockThreshold: product.lowStockThreshold,
+          shortDescription: product.shortDescription || '',
+          description: product.description || '',
+          imageUrl: product.imageUrl || '/perfume.jpg',
+          imageAlt: product.imageAlt || '',
+          active: product.active,
+          featured: product.featured
+        })
+      });
+      await loadProducts();
+      showToast(`${result.product.name} price and inventory saved`);
+    } catch (error) {
+      quickSave.disabled = false;
+      showToast(error.message);
+    }
+    return;
+  }
+  const productEdit = event.target.closest('[data-product-edit]');
+  if (productEdit) {
+    await openProductForm(productsById.get(productEdit.dataset.productEdit));
+    return;
+  }
+  if (event.target.closest('[data-product-price], [data-product-quantity]')) return;
   const filter = event.target.closest('[data-status]');
   if (filter) {
     document.querySelectorAll('[data-status]').forEach((button) => button.classList.remove('active'));
